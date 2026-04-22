@@ -37,11 +37,34 @@ body {
   z-index: 10;
 }
 
-#topbar h1 {
+#topbar-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+#topbar-brand h1 {
   font-size: 15px;
   font-weight: 700;
   color: var(--accent2);
+}
+#topbar-sub {
+  font-size: 11px;
+  color: var(--text2);
+  font-style: italic;
+}
+#topbar-credit {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text2);
   white-space: nowrap;
+}
+#topbar-credit a {
+  color: var(--accent2);
+  text-decoration: none;
+}
+#topbar-credit a:hover {
+  text-decoration: underline;
 }
 
 #search-wrap {

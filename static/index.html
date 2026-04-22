@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Learning Graph</title>
+  <title>MrGraph — The Graph-Based Tutor</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
@@ -11,11 +11,15 @@
 
 <!-- TOP BAR -->
 <header id="topbar">
-  <h1>AI Learning Graph</h1>
+  <div id="topbar-brand">
+    <h1>MrGraph</h1>
+    <span id="topbar-sub">the graph-based tutor</span>
+  </div>
   <div id="search-wrap">
     <input id="search" type="text" placeholder="Search concepts… (e.g. attention, dropout, useState)" autocomplete="off" />
     <div id="search-results"></div>
   </div>
+  <div id="topbar-credit">Developed by <a href="https://eirini-portfolio-aer3.vercel.app/" target="_blank" rel="noreferrer">Eirini Ornithopoulou</a></div>
 </header>
 
 <!-- MAIN LAYOUT -->
