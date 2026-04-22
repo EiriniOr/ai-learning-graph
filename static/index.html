@@ -151,12 +151,15 @@ function openPanel(concept) {
   document.getElementById("detail-tags").innerHTML =
     concept.tags.map(t => `<span class="tag">${t}</span>`).join("");
 
-  // Body paragraphs
+  // Body paragraphs — first para styled as intro, **text** → bold
+  function renderBody(text) {
+    const bold = s => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    return text.split(/\n\n+/).map((p, i) =>
+      `<p class="${i === 0 ? 'body-intro' : ''}">${bold(p.trim())}</p>`
+    ).join("");
+  }
   const body = document.getElementById("detail-body");
-  body.innerHTML = concept.body
-    .split(/\n\n+/)
-    .map(p => `<p>${p.trim()}</p>`)
-    .join("");
+  body.innerHTML = renderBody(concept.body);
 
   // Code
   const codeSection = document.getElementById("code-section");
@@ -208,15 +211,26 @@ function closePanel() {
 
 function updateNav(concept) {
   const pathIds = data.paths[concept.path] || [];
-  const idx     = pathIds.indexOf(concept.id);
+  const pathSet = new Set(pathIds);
   const prevBtn = document.getElementById("btn-prev");
   const nextBtn = document.getElementById("btn-next");
 
-  prevBtn.disabled = idx <= 0;
-  nextBtn.disabled = idx < 0 || idx >= pathIds.length - 1;
+  // Prev: first prerequisite that lives in the same path
+  const prevId = (concept.prerequisites || []).find(id => pathSet.has(id))
+    || (() => { const i = pathIds.indexOf(concept.id); return i > 0 ? pathIds[i - 1] : null; })();
 
-  prevBtn.onclick = () => { if (idx > 0) navigate(pathIds[idx - 1]); };
-  nextBtn.onclick = () => { if (idx < pathIds.length - 1) navigate(pathIds[idx + 1]); };
+  // Next: first concept in the path whose prerequisites include the current concept
+  const nextId = pathIds.find(id => id !== concept.id && (conceptMap[id]?.prerequisites || []).includes(concept.id))
+    || (() => { const i = pathIds.indexOf(concept.id); return i >= 0 && i < pathIds.length - 1 ? pathIds[i + 1] : null; })();
+
+  prevBtn.disabled = !prevId;
+  nextBtn.disabled = !nextId;
+
+  prevBtn.textContent = prevId ? `← ${conceptMap[prevId]?.title ?? 'Prev'}` : '← Start';
+  nextBtn.textContent = nextId ? `${conceptMap[nextId]?.title ?? 'Next'} →` : 'End →';
+
+  prevBtn.onclick = () => { if (prevId) navigate(prevId); };
+  nextBtn.onclick = () => { if (nextId) navigate(nextId); };
 }
 
 function navigate(id) {
