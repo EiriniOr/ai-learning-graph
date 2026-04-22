@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Learning Graph</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <h1>AI Learning Graph</h1>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search concepts… (e.g. attention, dropout, useState)" autocomplete="off" />
+    <div id="search-results"></div>
+  </div>
+</header>
+
+<!-- MAIN LAYOUT -->
+<div id="layout">
+
+  <!-- SIDEBAR: learning paths -->
+  <nav id="sidebar">
+    <h2>Learning Paths</h2>
+    <button class="path-btn active" data-path="">All</button>
+  </nav>
+
+  <!-- GRAPH -->
+  <div id="graph-wrap">
+    <div id="legend"></div>
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="btn-zoom-in"  title="Zoom in">+</button>
+      <button class="zoom-btn" id="btn-zoom-out" title="Zoom out">−</button>
+      <button class="zoom-btn" id="btn-zoom-fit" title="Fit" style="font-size:12px">⊡</button>
+    </div>
+  </div>
+
+  <!-- DETAIL PANEL -->
+  <aside id="detail" class="hidden">
+    <div id="detail-inner">
+      <div id="detail-path-label"></div>
+      <div id="detail-title"></div>
+      <div id="detail-short"></div>
+      <div class="tags" id="detail-tags"></div>
+
+      <div class="section-label">Explanation</div>
+      <div id="detail-body"></div>
+
+      <div id="code-section" style="display:none">
+        <div class="section-label">Code Example</div>
+        <pre id="detail-code"></pre>
+      </div>
+
+      <div id="prereq-section" style="display:none">
+        <div class="section-label">Prerequisites</div>
+        <div class="related-chips" id="detail-prereqs"></div>
+      </div>
+
+      <div id="related-section" style="display:none">
+        <div class="section-label">Related</div>
+        <div class="related-chips" id="detail-related"></div>
+      </div>
+    </div>
+
+    <div id="detail-nav">
+      <button class="nav-btn" id="btn-prev" disabled>← Prev</button>
+      <button class="nav-btn" id="btn-next" disabled>Next →</button>
+    </div>
+  </aside>
+
+</div><!-- /layout -->
+
+<script type="module">
+import { initGraph, selectNode, highlightPath, focusNode } from "/static/graph.js";
+import { initSearch } from "/static/search.js";
+
+let data = null;
+let conceptMap = {};
+let currentId  = null;
+
+async function boot() {
+  const res = await fetch("/api/concepts");
+  data = await res.json();
+  conceptMap = Object.fromEntries(data.concepts.map(c => [c.id, c]));
+  window._pathsData = data.paths;
+
+  buildSidebar();
+  initGraph(data, handleSelect);
+  initSearch(data.concepts, id => { handleSelect(id); focusNode(id); selectNode(id, handleSelect); });
+}
+
+function buildSidebar() {
+  const nav = document.getElementById("sidebar");
+  for (const path of Object.keys(data.paths)) {
+    const btn = document.createElement("button");
+    btn.className = "path-btn";
+    btn.dataset.path = path;
+    btn.textContent = path;
+    nav.appendChild(btn);
+  }
+  nav.addEventListener("click", e => {
+    const btn = e.target.closest(".path-btn");
+    if (!btn) return;
+    nav.querySelectorAll(".path-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const path = btn.dataset.path || null;
+    highlightPath(path, handleSelect);
+  });
+}
+
+function handleSelect(id) {
+  if (!id) { closePanel(); return; }
+  currentId = id;
+  const concept = conceptMap[id];
+  if (!concept) return;
+  openPanel(concept);
+}
+
+const COLOR_MAP = {};
+const PATH_COLORS = [
+  "#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6",
+  "#06b6d4","#f97316","#ec4899","#14b8a6","#84cc16",
+];
+
+function getPathColor(path) {
+  if (!COLOR_MAP[path]) {
+    const idx = Object.keys(data.paths).indexOf(path);
+    COLOR_MAP[path] = PATH_COLORS[idx % PATH_COLORS.length];
+  }
+  return COLOR_MAP[path];
+}
+
+function openPanel(concept) {
+  const panel = document.getElementById("detail");
+  panel.classList.remove("hidden");
+
+  const color = getPathColor(concept.path);
+
+  document.getElementById("detail-path-label").textContent = concept.path;
+  document.getElementById("detail-path-label").style.color = color;
+  document.getElementById("detail-title").textContent = concept.title;
+  document.getElementById("detail-short").textContent  = concept.short;
+
+  // Tags
+  document.getElementById("detail-tags").innerHTML =
+    concept.tags.map(t => `<span class="tag">${t}</span>`).join("");
+
+  // Body paragraphs
+  const body = document.getElementById("detail-body");
+  body.innerHTML = concept.body
+    .split(/\n\n+/)
+    .map(p => `<p>${p.trim()}</p>`)
+    .join("");
+
+  // Code
+  const codeSection = document.getElementById("code-section");
+  const codeEl      = document.getElementById("detail-code");
+  if (concept.code_example) {
+    codeEl.textContent = concept.code_example;
+    codeSection.style.display = "block";
+  } else {
+    codeSection.style.display = "none";
+  }
+
+  // Prerequisites
+  const prereqSection = document.getElementById("prereq-section");
+  const prereqEl      = document.getElementById("detail-prereqs");
+  const prereqs = (concept.prerequisites || []).filter(id => conceptMap[id]);
+  if (prereqs.length) {
+    prereqEl.innerHTML = prereqs.map(id =>
+      `<span class="chip" data-id="${id}">${conceptMap[id].title}</span>`
+    ).join("");
+    prereqSection.style.display = "block";
+  } else {
+    prereqSection.style.display = "none";
+  }
+
+  // Related
+  const relatedSection = document.getElementById("related-section");
+  const relatedEl      = document.getElementById("detail-related");
+  const related = (concept.related || []).filter(id => conceptMap[id]);
+  if (related.length) {
+    relatedEl.innerHTML = related.map(id =>
+      `<span class="chip" data-id="${id}">${conceptMap[id].title}</span>`
+    ).join("");
+    relatedSection.style.display = "block";
+  } else {
+    relatedSection.style.display = "none";
+  }
+
+  // Nav buttons
+  updateNav(concept);
+
+  // Scroll panel to top
+  document.getElementById("detail-inner").scrollTop = 0;
+}
+
+function closePanel() {
+  document.getElementById("detail").classList.add("hidden");
+  currentId = null;
+}
+
+function updateNav(concept) {
+  const pathIds = data.paths[concept.path] || [];
+  const idx     = pathIds.indexOf(concept.id);
+  const prevBtn = document.getElementById("btn-prev");
+  const nextBtn = document.getElementById("btn-next");
+
+  prevBtn.disabled = idx <= 0;
+  nextBtn.disabled = idx < 0 || idx >= pathIds.length - 1;
+
+  prevBtn.onclick = () => { if (idx > 0) navigate(pathIds[idx - 1]); };
+  nextBtn.onclick = () => { if (idx < pathIds.length - 1) navigate(pathIds[idx + 1]); };
+}
+
+function navigate(id) {
+  if (!conceptMap[id]) return;
+  handleSelect(id);
+  focusNode(id);
+  selectNode(id, handleSelect);
+}
+
+// Chip clicks (detail panel)
+document.getElementById("detail-inner").addEventListener("click", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  navigate(chip.dataset.id);
+});
+
+boot();
+</script>
+</body>
+</html>
