@@ -151,15 +151,15 @@ function openPanel(concept) {
   document.getElementById("detail-tags").innerHTML =
     concept.tags.map(t => `<span class="tag">${t}</span>`).join("");
 
-  // Body paragraphs — first para styled as intro, **text** → bold
-  function renderBody(text) {
-    const bold = s => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    return text.split(/\n\n+/).map((p, i) =>
-      `<p class="${i === 0 ? 'body-intro' : ''}">${bold(p.trim())}</p>`
-    ).join("");
-  }
+  // Plain-English intro block (if present), then technical body
+  function bold(s) { return s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); }
   const body = document.getElementById("detail-body");
-  body.innerHTML = renderBody(concept.body);
+  const introHtml = concept.plain
+    ? `<p class="body-intro">${bold(concept.plain)}</p>`
+    : '';
+  const bodyHtml = concept.body.split(/\n\n+/)
+    .map(p => `<p>${bold(p.trim())}</p>`).join('');
+  body.innerHTML = introHtml + bodyHtml;
 
   // Code
   const codeSection = document.getElementById("code-section");
