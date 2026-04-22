@@ -114,17 +114,15 @@
       "difference_in_differences",
       "propensity_score"
     ],
-    "React Hooks": [
-      "useState",
-      "useEffect",
-      "useRef",
-      "useContext",
-      "useReducer",
-      "useMemo",
-      "useCallback",
-      "custom_hooks",
-      "hook_rules",
-      "hook_patterns"
+    "Agent Hooks & Callbacks": [
+      "hooks_overview",
+      "claude_code_hooks",
+      "pre_tool_use_hook",
+      "post_tool_use_hook",
+      "session_lifecycle_hooks",
+      "agent_callbacks",
+      "streaming_events",
+      "observability_via_hooks"
     ],
     "Agentic Engineering": [
       "agentic_loop",
@@ -2234,231 +2232,192 @@
       "plain": "A propensity score is the probability that a person received the treatment given their characteristics. By matching treated and control individuals with similar propensity scores, you create comparison groups that look similar except for whether they were treated — mimicking the balance of a randomised experiment."
     },
     {
-      "id": "useState",
-      "title": "useState",
+      "id": "hooks_overview",
+      "title": "Hooks Overview",
       "tags": [
-        "react",
         "hooks",
-        "state"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [],
-      "related": [
-        "useReducer",
-        "useEffect",
-        "hook_rules",
-        "agent_memory",
-        "human_in_the_loop"
-      ],
-      "short": "Declares a state variable and its setter in a functional component, triggering a re-render on change.",
-      "body": "useState is the primary hook for local component state. It returns a tuple: [state, setState]. The initial value is only used on the first render. Calling setState enqueues a re-render with the new value. React batches multiple setState calls within event handlers into a single re-render (React 18+, batching applies everywhere including async callbacks). The setter can receive a value directly or a function: setState(fn) calls fn(currentState) and uses the return value — this functional update form is essential when the new state depends on the current state to avoid stale closure bugs.\n\nState updates are asynchronous: reading state immediately after setState still returns the old value. The new value is available in the next render. For values that change rapidly and do not need to trigger re-renders (timers, interval IDs, previous values), useRef is the right tool — useState for that would cause unnecessary re-renders. For complex state with multiple sub-fields, a single object state is fine as long as the object is spread into a new reference: setState({ ...prev, field: newValue }).\n\nCommon mistakes: mutating state directly (pushing to an array, modifying an object field) — React will not detect the change because the reference is the same. Always create new arrays/objects. Initialising state with an expensive computation: pass a function to useState instead of calling the function — useState(() => expensiveCompute()) runs the initialiser once; useState(expensiveCompute()) runs it on every render. Derived values should be computed during render, not stored in state, to avoid state synchronisation bugs.",
-      "code_example": "import React, { useState } from 'react';\n\nfunction Counter() {\n  const [count, setCount] = useState(0);\n\n  // Functional update: safe when new state depends on old\n  const increment = () => setCount(c => c + 1);\n  const decrement = () => setCount(c => c - 1);\n\n  return (\n    <div>\n      <button onClick={decrement}>-</button>\n      <span> {count} </span>\n      <button onClick={increment}>+</button>\n    </div>\n  );\n}\n\n// Object state — always spread into new object\nfunction Form() {\n  const [form, setForm] = useState({ name: '', email: '' });\n\n  const handleChange = (e) =>\n    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));\n\n  return (\n    <form>\n      <input name=\"name\"  value={form.name}  onChange={handleChange} />\n      <input name=\"email\" value={form.email} onChange={handleChange} />\n    </form>\n  );\n}\n\n// Lazy initialiser — expensive computation runs once\nfunction ExpensiveInit() {\n  const [data] = useState(() => {\n    // This only runs on mount, not every render\n    return Array.from({ length: 10000 }, (_, i) => i * 2);\n  });\n  return <div>Items: {data.length}</div>;\n}",
-      "plain": "useState gives a React component its own memory. Call setCount(5) and the component remembers that number — and React automatically re-renders the screen to show the new value. It's the fundamental building block for anything that changes dynamically in a React UI."
-    },
-    {
-      "id": "useEffect",
-      "title": "useEffect",
-      "tags": [
-        "react",
-        "hooks",
-        "side-effects"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useState"
-      ],
-      "related": [
-        "useRef",
-        "useCallback",
-        "async_effects",
-        "agentic_loop",
-        "orchestration"
-      ],
-      "short": "Runs side effects (data fetching, subscriptions, DOM mutations) after renders, with optional cleanup.",
-      "body": "useEffect(fn, deps) runs fn after the browser paints following a render. The dependency array controls when it re-runs: empty array [] runs once after mount; omitted deps runs after every render; [a, b] runs when a or b change between renders. The effect function can return a cleanup function, called before the next effect run and on unmount — essential for clearing timers, cancelling fetches, and removing event listeners to prevent memory leaks and stale callbacks.\n\nThe effect runs after paint, making it unsuitable for DOM mutations that must be synchronous (flicker-free layout measurements). useLayoutEffect runs synchronously after DOM mutations but before paint — use it for reading/writing layout, animating DOM elements, or syncing external stores. In React 18 Strict Mode, effects fire twice in development (mount, unmount, remount) to surface cleanup bugs — if this causes problems, the cleanup function is missing or wrong.\n\nCommon patterns: data fetching with abort signal (cleanup cancels in-flight request on unmount/re-run); event listener (add on mount, remove in cleanup); synchronising with an external store (subscribe in effect, cleanup unsubscribes); interval/timer (set in effect, clear in cleanup). Common mistakes: missing dependencies (stale closure reads an old value), triggering infinite loops (updating state that is also a dependency), not cleaning up (memory leaks, multiple listeners stacking up).",
-      "code_example": "import React, { useState, useEffect } from 'react';\n\n// Data fetching with cleanup\nfunction UserProfile({ userId }) {\n  const [user, setUser]   = useState(null);\n  const [error, setError] = useState(null);\n\n  useEffect(() => {\n    // Reset on userId change\n    setUser(null); setError(null);\n\n    const controller = new AbortController();\n\n    fetch(`/api/users/${userId}`, { signal: controller.signal })\n      .then(r => r.json())\n      .then(setUser)\n      .catch(err => {\n        if (err.name !== 'AbortError') setError(err.message);\n      });\n\n    // Cleanup: cancel fetch if userId changes or component unmounts\n    return () => controller.abort();\n  }, [userId]);  // re-run when userId changes\n\n  if (error) return <p>Error: {error}</p>;\n  if (!user)  return <p>Loading...</p>;\n  return <p>{user.name}</p>;\n}\n\n// Timer with cleanup\nfunction Stopwatch() {\n  const [seconds, setSeconds] = useState(0);\n\n  useEffect(() => {\n    const id = setInterval(() => setSeconds(s => s + 1), 1000);\n    return () => clearInterval(id);  // cleanup on unmount\n  }, []);  // run once on mount\n\n  return <div>{seconds}s</div>;\n}",
-      "plain": "useEffect runs code after the component appears on screen — perfect for fetching data, starting a timer, or subscribing to an event. You can also return a cleanup function that runs when the component disappears or before the effect re-runs, preventing memory leaks and stale subscriptions."
-    },
-    {
-      "id": "useRef",
-      "title": "useRef",
-      "tags": [
-        "react",
-        "hooks",
-        "refs"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useEffect"
-      ],
-      "related": [
-        "useEffect",
-        "forwardRef",
-        "useState"
-      ],
-      "short": "Returns a mutable ref object that persists across renders without triggering re-renders when mutated.",
-      "body": "useRef returns { current: initialValue }. Mutating ref.current does not trigger a re-render — this distinguishes it from useState. The primary use cases are: DOM access (attaching the ref to a JSX element's ref prop gives ref.current as the DOM node, enabling imperative operations like focus, scroll, and measurements); and mutable values that must persist across renders without causing re-renders (previous state, timer IDs, whether a component is mounted, third-party library instances).\n\nFor DOM access: attach to a JSX element with ref={myRef}, then after mount, myRef.current is the HTMLElement. useEffect with [] is the right place to read it because the ref is populated after the initial render. useLayoutEffect is better for synchronous layout reads. For storing previous values: useEffect runs after render, so useRef(undefined) + assignment in useEffect captures the previous render's value.\n\nforwardRef wraps a component to allow its parent to receive a ref to a DOM node inside it. useImperativeHandle customises the value exposed when a parent attaches a ref, allowing components to expose an API (a focus() method) instead of raw DOM nodes. A common mistake is reading ref.current during render — the ref may not be populated yet on the first render, and mutations to refs during render break React's rendering model. Always read refs in effects or event handlers, not during the render function body.",
-      "code_example": "import React, { useRef, useEffect, useState } from 'react';\n\n// DOM ref: focus input on mount\nfunction AutoFocusInput() {\n  const inputRef = useRef(null);\n  useEffect(() => {\n    inputRef.current?.focus();\n  }, []);\n  return <input ref={inputRef} placeholder=\"Focused on mount\" />;\n}\n\n// Mutable value: track render count without causing re-render\nfunction RenderCounter() {\n  const [count, setCount] = useState(0);\n  const renders = useRef(0);\n  renders.current += 1;  // mutation, no re-render\n  return (\n    <div>\n      <p>State: {count} | Renders: {renders.current}</p>\n      <button onClick={() => setCount(c => c + 1)}>Increment</button>\n    </div>\n  );\n}\n\n// Previous value pattern\nfunction usePrevious(value) {\n  const ref = useRef(undefined);\n  useEffect(() => {\n    ref.current = value;  // runs after render, so ref holds previous\n  });\n  return ref.current;\n}\n\nfunction DiffDisplay({ value }) {\n  const prev = usePrevious(value);\n  return <p>Now: {value}, Before: {prev ?? 'none'}</p>;\n}",
-      "plain": "useRef holds a value that persists across renders without causing the component to re-render when it changes. It's also how you get a handle to a real DOM element — like grabbing the input field so you can programmatically focus it or measure its size."
-    },
-    {
-      "id": "useContext",
-      "title": "useContext",
-      "tags": [
-        "react",
-        "hooks",
-        "context"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useRef"
-      ],
-      "related": [
-        "useReducer",
-        "useState",
-        "prop_drilling",
-        "multi_agent_systems"
-      ],
-      "short": "Consumes a React context value, letting deeply nested components access shared data without prop drilling.",
-      "body": "useContext(MyContext) returns the current context value from the nearest MyContext.Provider above the component in the tree. When the Provider's value changes, all consumers re-render. Context solves the prop drilling problem: passing data through many intermediate components that do not use it themselves. Common use cases are theme, locale, authenticated user, and feature flags — values that are needed widely but change infrequently.\n\nContext is not a state management solution. It is a value propagation mechanism. The state that feeds into a context's value should live in a parent component (useState or useReducer), and only the value is put in context. Colocating a dispatch function with the state in context — passing both the state and the dispatch from useReducer — is a common pattern for shared state without Redux. Context re-renders all consumers on every value change — for frequently changing values this can cause performance issues, addressed by splitting into multiple contexts or memoising consumers with React.memo.\n\nA structured pattern: create the context with createContext(defaultValue), wrap the subtree with a Provider component that owns the state, export a custom hook useMyContext() that calls useContext and throws if used outside the provider. The default value (passed to createContext) is used only when there is no Provider above — it is useful for testing but often left as null or undefined intentionally to catch missing-provider bugs.",
-      "code_example": "import React, { createContext, useContext, useState } from 'react';\n\n// 1. Create context\nconst ThemeContext = createContext(null);\n\n// 2. Provider component that owns the state\nfunction ThemeProvider({ children }) {\n  const [theme, setTheme] = useState('light');\n  const toggle = () => setTheme(t => t === 'light' ? 'dark' : 'light');\n\n  return (\n    <ThemeContext.Provider value={{ theme, toggle }}>\n      {children}\n    </ThemeContext.Provider>\n  );\n}\n\n// 3. Custom hook (throws if used outside provider)\nfunction useTheme() {\n  const ctx = useContext(ThemeContext);\n  if (!ctx) throw new Error('useTheme must be inside ThemeProvider');\n  return ctx;\n}\n\n// 4. Consumer — no prop drilling needed\nfunction ThemedButton() {\n  const { theme, toggle } = useTheme();\n  return (\n    <button\n      style={{ background: theme === 'dark' ? '#333' : '#fff',\n               color:      theme === 'dark' ? '#fff' : '#333' }}\n      onClick={toggle}\n    >\n      Toggle theme\n    </button>\n  );\n}\n\n// Usage\nfunction App() {\n  return (\n    <ThemeProvider>\n      <ThemedButton />\n    </ThemeProvider>\n  );\n}",
-      "plain": "useContext lets any component in your tree read shared data without having to pass it through every parent in between. Think of it as a way to make certain values globally accessible within a subtree — useful for themes, authentication, and settings."
-    },
-    {
-      "id": "useReducer",
-      "title": "useReducer",
-      "tags": [
-        "react",
-        "hooks",
-        "state"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useContext"
-      ],
-      "related": [
-        "useState",
-        "useContext",
-        "redux",
-        "orchestration",
-        "planning_and_reasoning"
-      ],
-      "short": "Manages complex state via a reducer function, dispatching actions to describe state transitions explicitly.",
-      "body": "useReducer(reducer, initialState) returns [state, dispatch]. The reducer is a pure function (state, action) => newState. Dispatching an action: dispatch({ type: 'INCREMENT', payload: 1 }) calls reducer(currentState, action) and re-renders with the result. This is the Redux pattern localised to a single component or subtree. It is preferable to useState when state involves multiple sub-values that change together, when the next state depends on complex logic over the current state, or when transitions should be explicit and traceable.\n\nThe reducer pattern enforces a clean separation between what the UI does (dispatch actions with descriptive names) and how state changes (reducer handles each action type). This makes state logic testable in isolation — reducers are pure functions that take state and action and return new state, with no side effects. Sharing state across a component tree: pair useReducer with useContext, putting both state and dispatch in context. Components that need to read state consume the state context; components that need to dispatch consume the dispatch context — split contexts prevent unnecessary re-renders.\n\nInitialiser function: useReducer(reducer, initialArg, init) calls init(initialArg) to compute the initial state lazily, which avoids re-creating expensive initial state on every render and enables reset-by-redispatch (dispatch({type:'RESET'}) calls init again). Action types should be descriptive strings ('user/login', 'cart/addItem') rather than arbitrary codes. The Immer library's produce function can be used inside reducers to write mutative-looking updates that return new objects correctly.",
-      "code_example": "import React, { useReducer } from 'react';\n\nconst initialState = { items: [], total: 0 };\n\nfunction cartReducer(state, action) {\n  switch (action.type) {\n    case 'ADD_ITEM': {\n      const exists = state.items.find(i => i.id === action.item.id);\n      const items  = exists\n        ? state.items.map(i => i.id === action.item.id\n            ? { ...i, qty: i.qty + 1 } : i)\n        : [...state.items, { ...action.item, qty: 1 }];\n      return { items, total: items.reduce((s, i) => s + i.price * i.qty, 0) };\n    }\n    case 'REMOVE_ITEM':\n      return {\n        items: state.items.filter(i => i.id !== action.id),\n        total: state.items\n                 .filter(i => i.id !== action.id)\n                 .reduce((s, i) => s + i.price * i.qty, 0)\n      };\n    case 'CLEAR':\n      return initialState;\n    default:\n      return state;\n  }\n}\n\nfunction Cart() {\n  const [cart, dispatch] = useReducer(cartReducer, initialState);\n\n  const addItem = () => dispatch({\n    type: 'ADD_ITEM',\n    item: { id: 1, name: 'Book', price: 12.99 }\n  });\n\n  return (\n    <div>\n      <button onClick={addItem}>Add Book</button>\n      <button onClick={() => dispatch({ type: 'CLEAR' })}>Clear</button>\n      <p>Items: {cart.items.length} | Total: ${cart.total.toFixed(2)}</p>\n    </div>\n  );\n}",
-      "plain": "useReducer manages complex state through named actions and a central update function — similar to how Redux works, but built into React. Instead of many scattered useState calls, all state transitions go through one predictable place, making complex state easier to reason about and debug."
-    },
-    {
-      "id": "useMemo",
-      "title": "useMemo",
-      "tags": [
-        "react",
-        "hooks",
-        "performance"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useReducer"
-      ],
-      "related": [
-        "useCallback",
-        "react_memo",
-        "performance_optimisation"
-      ],
-      "short": "Memoises an expensive computed value, recomputing it only when specified dependencies change.",
-      "body": "useMemo(fn, deps) calls fn() on the first render and caches the result. On subsequent renders, it returns the cached result if deps have not changed (by Object.is comparison); otherwise it recomputes. It is a performance optimisation — the same component logic should work correctly without it, just potentially slower. The primary use case is skipping expensive re-computations that are not needed on every render.\n\nWhen to use: computationally expensive derivations (sorting/filtering large lists, complex aggregations), values used as dependencies of other hooks (if an object computed during render is used in useEffect's dependency array, recreating it every render would trigger the effect every render — useMemo stabilises the reference), and props passed to memoised child components (React.memo only helps if the props are referentially stable).\n\nWhen not to use: for cheap computations (simple arithmetic, string concatenation, array mapping over small arrays) — the overhead of useMemo itself (closure, dependency comparison) can exceed the cost of recomputing. For values that always need to be fresh. For side effects — useMemo's computation should be pure; use useEffect for side effects. The React team's guidance: profile first, optimise second. Premature useMemo adds noise and can hide bugs when dependencies are misconfigured. React Forget (the React compiler) automatically adds memoisation in the future, making manual useMemo less necessary.",
-      "code_example": "import React, { useState, useMemo } from 'react';\n\nconst items = Array.from({ length: 10000 }, (_, i) => ({\n  id: i, name: `Item ${i}`, category: i % 3 === 0 ? 'A' : 'B', price: Math.random() * 100\n}));\n\nfunction ItemList() {\n  const [filter, setFilter]   = useState('A');\n  const [sortAsc, setSortAsc] = useState(true);\n  const [query, setQuery]     = useState('');\n\n  // Expensive: filter + sort 10000 items\n  // Without useMemo: runs on every re-render (e.g., when query changes)\n  const processed = useMemo(() => {\n    console.log('recomputing...');\n    return items\n      .filter(i => i.category === filter)\n      .filter(i => i.name.includes(query))\n      .sort((a, b) => sortAsc ? a.price - b.price : b.price - a.price);\n  }, [filter, sortAsc, query]);  // only recomputes when these change\n\n  return (\n    <div>\n      <input value={query} onChange={e => setQuery(e.target.value)} placeholder=\"Search...\" />\n      <button onClick={() => setFilter(f => f === 'A' ? 'B' : 'A')}>Toggle filter</button>\n      <button onClick={() => setSortAsc(s => !s)}>Toggle sort</button>\n      <p>{processed.length} items</p>\n    </div>\n  );\n}",
-      "plain": "useMemo caches the result of an expensive calculation and only recomputes it when its inputs change. If your component re-renders often but a particular calculation rarely changes, useMemo prevents redundant work and keeps the UI fast."
-    },
-    {
-      "id": "useCallback",
-      "title": "useCallback",
-      "tags": [
-        "react",
-        "hooks",
-        "performance"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useMemo"
-      ],
-      "related": [
-        "useMemo",
-        "react_memo",
-        "useEffect"
-      ],
-      "short": "Memoises a function reference so it is not recreated on every render, stabilising props and effect dependencies.",
-      "body": "useCallback(fn, deps) returns a memoised version of fn that only changes when deps change. It is equivalent to useMemo(() => fn, deps). Functions defined inside a component body are recreated on every render with a new reference. This causes issues in two scenarios: the function is passed as a prop to a memoised child (React.memo compares props by reference; a new function reference causes the child to re-render even if nothing meaningful changed), or the function is used as a dependency of another hook (useEffect re-runs when deps change by reference).\n\nThe primary use case is stabilising event handler callbacks passed to memoised children, preventing unnecessary re-renders in large component trees. The second use case is stabilising functions used in useEffect dependencies — without useCallback, a function defined in the component body would be a new reference every render, causing the effect to re-run every render. With useCallback, the function only changes when its dependencies change, and the effect only re-runs then.\n\nThe same caveats as useMemo apply: use it only when there is a demonstrated performance issue or to stabilise effect dependencies. Overusing useCallback on every function clutters the code and adds complexity without benefit for non-memoised children (React.memo is required on the child for useCallback to help with re-render prevention). Dependency arrays that are too broad (missing deps) or too narrow (stale closures) create subtle bugs that are harder to find than the performance issues they were meant to address.",
-      "code_example": "import React, { useState, useCallback, memo } from 'react';\n\n// Child must be memoised for useCallback to prevent re-renders\nconst ExpensiveChild = memo(({ onClick, label }) => {\n  console.log(`Rendering ${label}`);\n  return <button onClick={onClick}>{label}</button>;\n});\n\nfunction Parent() {\n  const [countA, setCountA] = useState(0);\n  const [countB, setCountB] = useState(0);\n\n  // Without useCallback: new reference every render -> ExpensiveChild always re-renders\n  // With useCallback: stable reference -> only re-renders when dependency changes\n  const handleA = useCallback(\n    () => setCountA(c => c + 1),\n    []  // setCountA is stable, so no deps needed\n  );\n\n  const handleB = useCallback(\n    () => setCountB(c => c + 1),\n    []\n  );\n\n  return (\n    <div>\n      <p>A: {countA}  B: {countB}</p>\n      {/* Clicking A increments A; B's child should NOT re-render */}\n      <ExpensiveChild onClick={handleA} label=\"Increment A\" />\n      <ExpensiveChild onClick={handleB} label=\"Increment B\" />\n    </div>\n  );\n}\n\n// useCallback for stable useEffect dependency\nfunction useFetch(url, fetchFn) {\n  const stableFetch = useCallback(fetchFn, [url]);  // only changes when url changes\n  // useEffect now only re-runs when url changes, not on every render\n}",
-      "plain": "useCallback stores a stable reference to a function so it's not recreated on every render. This matters when passing the function to a memoised child component — a new function reference every render would cause the child to re-render even when nothing meaningful changed."
-    },
-    {
-      "id": "custom_hooks",
-      "title": "Custom Hooks",
-      "tags": [
-        "react",
-        "hooks",
-        "patterns"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "useCallback"
-      ],
-      "related": [
-        "hook_patterns",
-        "hook_rules",
-        "composability",
-        "orchestration"
-      ],
-      "short": "User-defined functions starting with 'use' that encapsulate and share stateful logic across components.",
-      "body": "Custom hooks extract stateful logic into reusable functions. A custom hook is just a function whose name starts with 'use' and that calls other hooks. The naming convention is a signal to the React linter (eslint-plugin-react-hooks) to enforce hook rules inside it. Custom hooks solve the code reuse problem that class components addressed with higher-order components and render props, but without the extra nesting and with clearer data flow.\n\nGood candidates for custom hooks: data fetching (useFetch, useQuery), browser API integration (useLocalStorage, useWindowSize, useOnlineStatus), debouncing/throttling (useDebounce, useThrottle), form handling (useForm), previous value (usePrevious), and complex async state machines (useAsync). The hook encapsulates the useState, useEffect, and other primitives, exposing only the meaningful API surface to the component.\n\nCustom hooks do not share state — each component that calls a custom hook gets its own isolated state. To share state between components, lift it to a common ancestor or put it in context. Custom hooks compose cleanly: a usePaginatedQuery hook can build on a useQuery hook which builds on useFetch. Testing custom hooks directly (using @testing-library/react's renderHook) is preferred over testing them only through components — it isolates the logic and speeds up tests.",
-      "code_example": "import { useState, useEffect, useCallback } from 'react';\n\n// useFetch: data fetching with loading and error states\nfunction useFetch(url) {\n  const [data,    setData]    = useState(null);\n  const [loading, setLoading] = useState(true);\n  const [error,   setError]   = useState(null);\n\n  useEffect(() => {\n    let cancelled = false;\n    setLoading(true); setData(null); setError(null);\n    fetch(url)\n      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })\n      .then(d  => { if (!cancelled) { setData(d);    setLoading(false); } })\n      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });\n    return () => { cancelled = true; };\n  }, [url]);\n\n  return { data, loading, error };\n}\n\n// useDebounce: delay value updates\nfunction useDebounce(value, delay = 300) {\n  const [debounced, setDebounced] = useState(value);\n  useEffect(() => {\n    const id = setTimeout(() => setDebounced(value), delay);\n    return () => clearTimeout(id);\n  }, [value, delay]);\n  return debounced;\n}\n\n// useLocalStorage: persist state to localStorage\nfunction useLocalStorage(key, initial) {\n  const [value, setValue] = useState(() => {\n    try { return JSON.parse(localStorage.getItem(key)) ?? initial; }\n    catch { return initial; }\n  });\n  const set = useCallback(v => {\n    setValue(v);\n    localStorage.setItem(key, JSON.stringify(v));\n  }, [key]);\n  return [value, set];\n}",
-      "plain": "Custom hooks are reusable functions that package up hook logic so multiple components can share it. If two components both need to fetch data or track the window size, extract that logic into a custom hook — each component gets its own independent copy of the state, but the code is written once."
-    },
-    {
-      "id": "hook_rules",
-      "title": "Rules of Hooks",
-      "tags": [
-        "react",
-        "hooks",
-        "fundamentals"
-      ],
-      "path": "React Hooks",
-      "prerequisites": [
-        "custom_hooks"
-      ],
-      "related": [
-        "useState",
-        "useEffect",
-        "custom_hooks"
-      ],
-      "short": "Two rules hooks must follow: only call at the top level, and only call from React functions.",
-      "body": "React's two rules of hooks exist because React relies on the stable call order of hooks between renders to associate state with the correct hook. Rule 1: Only call hooks at the top level — never inside conditionals, loops, or nested functions. The order of hook calls must be identical on every render. If useState is called inside an if block, it might be skipped on some renders, shifting the indices of all subsequent hooks and corrupting their state.\n\nRule 2: Only call hooks from React function components or custom hooks — not from plain JavaScript functions, class components, or event handlers. This ensures hooks only run in the context of a React component tree where React can manage their lifecycle. The eslint-plugin-react-hooks package enforces both rules statically, catching violations before they cause subtle runtime bugs. The exhaustive-deps rule from the same plugin catches missing useEffect/useMemo/useCallback dependencies.\n\nThe practical implication of Rule 1: to conditionally run a hook, move the condition inside the hook. Instead of if (isLoggedIn) useUserData(), write useUserData() and inside the hook use if (!isLoggedIn) return null. This keeps the hook call unconditional from the component's perspective. Feature flags, roles, and permissions checks should live inside custom hooks that always run but conditionally return data or no-ops. The linter catches most violations, but understanding why the rules exist — stable call order per component instance — prevents confusion when debugging complex hook interactions.",
-      "code_example": "import { useState, useEffect } from 'react';\n\n// ❌ WRONG: hook inside a conditional\nfunction BadComponent({ show }) {\n  if (show) {\n    // eslint-disable-next-line react-hooks/rules-of-hooks\n    const [x] = useState(0);  // violates Rule 1 — call order varies\n  }\n}\n\n// ✅ CORRECT: condition inside the hook or component, hook always called\nfunction GoodComponent({ show }) {\n  const [x] = useState(0);  // always called\n  if (!show) return null;   // early return AFTER hooks\n}\n\n// ❌ WRONG: hook inside a loop\nfunction BadList({ items }) {\n  return items.map(item => {\n    const [selected, setSelected] = useState(false);  // violates Rule 1\n    return <div key={item.id}>{item.name}</div>;\n  });\n}\n\n// ✅ CORRECT: extract item to a component with its own hook call\nfunction ListItem({ item }) {\n  const [selected, setSelected] = useState(false);\n  return <div onClick={() => setSelected(s => !s)}>{item.name}</div>;\n}\n\nfunction GoodList({ items }) {\n  return items.map(item => <ListItem key={item.id} item={item} />);\n}\n\n// useEffect dependency rule: all values used inside must be in the array\nfunction Correct({ userId }) {\n  useEffect(() => {\n    fetch(`/api/${userId}`);  // userId must be in deps\n  }, [userId]);  // ✅ exhaustive-deps satisfied\n}",
-      "plain": "React hooks have two rules: only call them at the top level of a component (not inside loops or conditions), and only call them from React function components or other hooks. These rules are what let React reliably track which hook corresponds to which piece of state between renders."
-    },
-    {
-      "id": "hook_patterns",
-      "title": "Hook Patterns",
-      "tags": [
-        "react",
-        "hooks",
-        "patterns",
+        "callbacks",
+        "agents",
         "architecture"
       ],
-      "path": "React Hooks",
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [],
+      "related": [
+        "agentic_loop",
+        "tool_use",
+        "observability_via_hooks"
+      ],
+      "short": "Hooks are functions or shell commands that fire automatically at lifecycle events — before a tool runs, after it completes, when a session ends — letting you observe, modify, or block behavior without touching core code.",
+      "body": "A hook is an attachment point in a system where you can inject your own code. The system calls your code at the right moment — before a tool runs, after an LLM responds, when a session starts or ends — without you having to modify anything inside the system itself. In Claude Code, hooks are shell commands configured in settings. In agent frameworks like LangChain, they are callback classes. The pattern is the same: register code, and the system invokes it at predefined lifecycle events.\n\nThe key distinction is between read-only hooks and read-write hooks. A logging hook reads what is happening and writes it to a file — purely observational. A PreToolUse hook that returns a non-zero exit code blocks the tool from running entirely — it is a gatekeeper. This distinction determines where in the lifecycle you register each hook and what guarantees the system gives you about timing.\n\nHooks are foundational for production agent systems. Without them you cannot audit what your agent did, catch unsafe actions before they execute, stream progress to a UI, or plug your agent into existing monitoring infrastructure. They are the seams in the system where observability, safety, and human oversight live.",
+      "code_example": "import json, sys\n\ndef handle_hook():\n    payload = json.loads(sys.stdin.read())\n    tool    = payload.get(\"tool_name\", \"\")\n    args    = payload.get(\"tool_input\", {})\n\n    # Read-only: just log it\n    with open(\"/tmp/agent_audit.log\", \"a\") as f:\n        f.write(json.dumps({\"tool\": tool, \"args\": args}) + \"\\n\")\n\n    # Read-write: block certain tools\n    BLOCKED = {\"delete_file\", \"send_email\"}\n    if tool in BLOCKED:\n        print(f\"Blocked: {tool} requires human approval\", file=sys.stderr)\n        sys.exit(2)  # exit code 2 = block in Claude Code\n\n    sys.exit(0)  # allow\n\nif __name__ == \"__main__\":\n    handle_hook()",
+      "plain": "A hook is code that runs automatically when something specific happens in a system — before a tool runs, after it completes, when a session ends. Hooks let you add behavior like logging, safety checks, or approval prompts around the core agent without touching its internals."
+    },
+    {
+      "id": "claude_code_hooks",
+      "title": "Claude Code Hooks",
+      "tags": [
+        "hooks",
+        "claude-code",
+        "shell",
+        "automation"
+      ],
+      "path": "Agent Hooks & Callbacks",
       "prerequisites": [
-        "hook_rules"
+        "hooks_overview"
       ],
       "related": [
-        "custom_hooks",
-        "useReducer",
-        "useContext"
+        "pre_tool_use_hook",
+        "post_tool_use_hook",
+        "session_lifecycle_hooks",
+        "agent_safety"
       ],
-      "short": "Compositional patterns combining hooks to solve recurring problems: state machines, compound components, observer pattern.",
-      "body": "The reducer + context pattern is the canonical alternative to Redux for medium-complexity apps. Define state shape and action types, create a reducer, wrap the app in a provider that combines useReducer with two contexts (state and dispatch), export custom hooks for consumers. Components read from the state context and dispatch to the dispatch context — splitting them avoids re-rendering action-dispatching components when state changes.\n\nThe async state machine pattern manages multi-step async flows with useReducer. States: idle → loading → success | error. The reducer handles transitions; useEffect triggers async work on state transitions. This is more predictable than ad-hoc useState flags (isLoading, isError, data) because invalid state combinations (isLoading: true and isError: true simultaneously) are structurally impossible in the reducer. Libraries like XState formalise this with typed state machine definitions.\n\nThe compound components pattern uses context to share state between a parent component and its direct children without exposing props through every intermediate layer. A Tabs component puts the active tab index and setter in context; Tab and TabPanel children consume it. Render props and higher-order components can often be replaced with a custom hook that the consumer calls directly, keeping component trees flat. The hook factory pattern — a function that returns a custom hook configured with specific parameters — enables creating multiple instances of the same hook logic with different configurations.",
-      "code_example": "import React, { createContext, useContext, useReducer, useCallback } from 'react';\n\n// Pattern 1: Reducer + Context (Redux alternative)\nconst StateCtx    = createContext(null);\nconst DispatchCtx = createContext(null);\n\nconst init = { count: 0, step: 1 };\nconst reducer = (s, a) => {\n  switch (a.type) {\n    case 'inc':      return { ...s, count: s.count + s.step };\n    case 'set_step': return { ...s, step: a.step };\n    default:         return s;\n  }\n};\n\nexport function CounterProvider({ children }) {\n  const [state, dispatch] = useReducer(reducer, init);\n  return (\n    <DispatchCtx.Provider value={dispatch}>\n      <StateCtx.Provider value={state}>{children}</StateCtx.Provider>\n    </DispatchCtx.Provider>\n  );\n}\nexport const useCounterState    = () => useContext(StateCtx);\nexport const useCounterDispatch = () => useContext(DispatchCtx);\n\n// Pattern 2: Async state machine\nconst asyncReducer = (state, action) => ({\n  idle:    { loading: { ...state, status:'loading' } },\n  loading: { success: { status:'success', data: action.data, error: null },\n             error:   { status:'error',   data: null, error: action.error } },\n}[state.status]?.[action.type] ?? state);\n\nfunction useAsync(asyncFn) {\n  const [state, dispatch] = useReducer(asyncReducer, { status:'idle', data:null, error:null });\n  const run = useCallback(async (...args) => {\n    dispatch({ type: 'loading' });\n    try   { dispatch({ type: 'success', data: await asyncFn(...args) }); }\n    catch (e) { dispatch({ type: 'error', error: e.message }); }\n  }, [asyncFn]);\n  return { ...state, run };\n}",
-      "plain": "Hook patterns are reusable solutions to common problems built from combining hooks. The reducer + context pattern replaces Redux. The async state machine pattern manages multi-step async flows cleanly. Knowing these patterns means you can reach for a proven solution instead of reinventing it."
+      "short": "Shell commands configured in Claude Code settings that fire at five lifecycle events: PreToolUse, PostToolUse, Notification, Stop, and SubagentStop.",
+      "body": "Claude Code hooks are configured in settings.json under the hooks key. Each entry specifies an event type, a matcher (a tool name or * for all tools), and a shell command to run. When Claude Code reaches that event, it executes the command, passing structured JSON about the current operation via stdin. The hook reads that JSON, does whatever it needs to, and signals back to Claude Code via its exit code.\n\nFive event types cover the full lifecycle. PreToolUse fires before a tool executes — exit code 0 allows it, exit code 2 blocks it and shows the stderr output to the user. PostToolUse fires after completion with the tool result in the stdin payload. Notification fires for non-interactive updates. Stop fires when the main agent loop ends. SubagentStop fires when a subagent finishes. The PreToolUse block pattern is the primary mechanism for building approval flows and safety gates.\n\nHooks are per-project (in .claude/settings.json) or global (in ~/.claude/settings.json) — project hooks take precedence. Because hooks run as arbitrary shell commands they can do anything: write to a database, send a Slack message, open an approval dialog, or run a test suite. This flexibility is powerful but means slow hooks block every tool call — keep them fast.",
+      "code_example": "# ~/.claude/settings.json\n# {\n#   \"hooks\": {\n#     \"PreToolUse\":  [{\"matcher\": \"*\",   \"hooks\": [{\"type\": \"command\", \"command\": \"python3 ~/.claude/hooks/pre.py\"}]}],\n#     \"PostToolUse\": [{\"matcher\": \"Bash\",\"hooks\": [{\"type\": \"command\", \"command\": \"python3 ~/.claude/hooks/post.py\"}]}]\n#   }\n# }\n\n# ~/.claude/hooks/pre.py\nimport json, sys\npayload   = json.loads(sys.stdin.read())\ntool_name = payload.get(\"tool_name\", \"\")\ntool_args = payload.get(\"tool_input\", {})\n\n# Log every call\nwith open(\"/tmp/claude_tools.log\", \"a\") as f:\n    f.write(json.dumps({\"tool\": tool_name, \"args\": tool_args}) + \"\\n\")\n\n# Block force-push to main\nif tool_name == \"Bash\":\n    cmd = tool_args.get(\"command\", \"\")\n    if \"git push\" in cmd and \"--force\" in cmd and \"main\" in cmd:\n        print(\"Blocked: force push to main.\", file=sys.stderr)\n        sys.exit(2)\n\nsys.exit(0)",
+      "plain": "Claude Code hooks are shell scripts you configure once, and Claude Code runs them automatically at key moments — before it uses a tool, after it finishes, when a session ends. They are how you add logging, safety gates, or custom behavior to Claude Code without modifying anything in the app itself."
+    },
+    {
+      "id": "pre_tool_use_hook",
+      "title": "PreToolUse Hook",
+      "tags": [
+        "hooks",
+        "claude-code",
+        "safety",
+        "approval"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "claude_code_hooks",
+        "tool_use"
+      ],
+      "related": [
+        "post_tool_use_hook",
+        "agent_safety",
+        "human_in_the_loop"
+      ],
+      "short": "Fires before Claude executes any tool, with the full tool name and arguments in stdin. Can approve silently, give Claude corrective feedback, or block the action entirely.",
+      "body": "PreToolUse is the most powerful hook type because it runs before any side effects occur. The stdin payload includes the session ID, tool name, and the exact arguments Claude plans to pass. Your script has the full picture of what is about to happen and can make a decision: allow it (exit 0), give Claude corrective feedback without blocking (exit 1 plus a message to stdout), or block it entirely and show the user why (exit 2 plus a message to stderr). This three-way branching makes it suitable for both soft guidance and hard safety gates.\n\nThe feedback path (exit 1) is particularly useful for steering Claude without interrupting the user. If Claude is about to write a file with a style the project does not use, the hook can return a message like 'This project uses tabs, not spaces' and Claude will adjust accordingly — the user never sees the exchange. The block path (exit 2) stops execution immediately and shows the stderr message to the user, who can decide whether to override.\n\nCommon PreToolUse patterns: requiring human approval before network calls, blocking writes outside a sandbox directory, enforcing coding style before file writes, logging every tool call, checking shell commands against an allowlist, and preventing deletion of important files. Because the hook receives exact arguments, checks can be precise — block git push --force to main while allowing all other git commands.",
+      "code_example": "import json, sys, subprocess\n\npayload = json.loads(sys.stdin.read())\ntool    = payload[\"tool_name\"]\nargs    = payload.get(\"tool_input\", {})\n\n# Block force pushes to main\nif tool == \"Bash\":\n    cmd = args.get(\"command\", \"\")\n    if \"git push\" in cmd and \"--force\" in cmd and \"main\" in cmd:\n        print(\"Blocked: force push to main is not allowed.\", file=sys.stderr)\n        sys.exit(2)\n\n# Require interactive approval for network requests\nif tool in {\"WebFetch\", \"WebSearch\"}:\n    url = args.get(\"url\", args.get(\"query\", \"\"))\n    try:\n        answer = subprocess.run(\n            [\"bash\", \"-c\", f'read -p \"Allow {tool} → {url[:60]}? [y/N] \" a; echo $a'],\n            capture_output=True, text=True, timeout=30,\n        ).stdout.strip()\n        if answer.lower() != \"y\":\n            print(f\"User rejected {tool}.\", file=sys.stderr)\n            sys.exit(2)\n    except subprocess.TimeoutExpired:\n        print(\"Approval timed out — blocking.\", file=sys.stderr)\n        sys.exit(2)\n\nsys.exit(0)",
+      "plain": "A PreToolUse hook runs your code before Claude is allowed to use any tool. You can inspect what Claude is about to do, log it, ask for human approval, or return a special exit code to block it completely. It is the primary safety gate in the Claude Code hook system."
+    },
+    {
+      "id": "post_tool_use_hook",
+      "title": "PostToolUse Hook",
+      "tags": [
+        "hooks",
+        "claude-code",
+        "auditing",
+        "automation"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "pre_tool_use_hook"
+      ],
+      "related": [
+        "session_lifecycle_hooks",
+        "observability_via_hooks",
+        "monitoring"
+      ],
+      "short": "Fires after a tool completes, with the tool name, arguments, and result in stdin. Used for auditing, notifications, and triggering follow-up actions.",
+      "body": "PostToolUse receives everything PreToolUse saw plus the tool's output — you have the full picture of what was called and what it returned. Unlike PreToolUse, it cannot undo what happened, but it can react: log the result, send a notification, validate the output, or trigger a downstream workflow. Exit codes still matter: exit 2 surfaces an error message to the user, but the tool has already run.\n\nA powerful pattern is pairing the two hooks: PreToolUse permits or blocks, PostToolUse validates and feeds back. A write-file PreToolUse checks the path is within the allowed directory. The PostToolUse hook runs the linter on the newly written file and sends any errors back as stdout — Claude sees them immediately and fixes the issues without the user ever having to ask. This tight feedback loop substantially improves code quality in automated workflows.\n\nPostToolUse is also the right place for audit logging with full context. By the time it fires, you know both the intent (the arguments) and the outcome (the result). Writing both to an append-only log gives a complete audit trail of what Claude tried to do and what actually happened — invaluable for debugging, compliance, and building training data for future agents.",
+      "code_example": "import json, sys, subprocess\nfrom pathlib import Path\n\npayload = json.loads(sys.stdin.read())\ntool    = payload[\"tool_name\"]\nargs    = payload.get(\"tool_input\", {})\nresult  = payload.get(\"tool_result\", {})\nsuccess = not result.get(\"is_error\", False)\n\n# Append to audit log\nlog = Path.home() / \".claude\" / \"logs\" / \"audit.jsonl\"\nlog.parent.mkdir(parents=True, exist_ok=True)\nwith open(log, \"a\") as f:\n    f.write(json.dumps({\"tool\": tool, \"args\": args, \"success\": success}) + \"\\n\")\n\n# After a Python file write: lint and feed errors back to Claude\nif tool == \"Write\" and success:\n    path = args.get(\"file_path\", \"\")\n    if path.endswith(\".py\"):\n        lint = subprocess.run(\n            [\"ruff\", \"check\", \"--output-format=concise\", path],\n            capture_output=True, text=True,\n        )\n        if lint.returncode != 0:\n            print(f\"Linter issues in {path}:\\n{lint.stdout}\")\n            sys.exit(1)  # non-blocking feedback to Claude\n\nsys.exit(0)",
+      "plain": "A PostToolUse hook runs after Claude has used a tool, giving you access to both what was called and what it returned. Use it to audit every action, run a linter on newly written files, send notifications, or trigger follow-up workflows — automatically, after every relevant tool call."
+    },
+    {
+      "id": "session_lifecycle_hooks",
+      "title": "Session Lifecycle Hooks",
+      "tags": [
+        "hooks",
+        "claude-code",
+        "session",
+        "cleanup"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "claude_code_hooks"
+      ],
+      "related": [
+        "agent_callbacks",
+        "observability_via_hooks",
+        "human_in_the_loop"
+      ],
+      "short": "Stop and SubagentStop hooks fire when an agent session ends, providing a transcript summary — useful for cleanup, reporting, and chaining agents.",
+      "body": "Session lifecycle hooks fire at the boundaries of an agent's work rather than around individual tool calls. Stop fires when the main Claude Code session ends. SubagentStop fires when a subagent finishes its work. Both receive a payload with a summary of what the session accomplished, which tools were used, and what output was produced.\n\nStop hooks are the natural place for post-session cleanup and reporting: writing a session summary to a database, sending a Slack message when a long automated task completes, archiving generated files, or running final tests. Because the session is already over, these hooks run without time pressure — there is no user waiting for the next action.\n\nSubagentStop enables agent pipelines. When agent A finishes, the hook can extract its structured output, validate it, and trigger agent B with that output as its starting context. This is one way to build multi-stage agentic workflows without a full orchestration framework — the hook is the glue between stages, passing context forward through the pipeline.",
+      "code_example": "import json, sys, os\nfrom datetime import datetime\nfrom pathlib import Path\n\npayload    = json.loads(sys.stdin.read())\nevent_type = payload.get(\"event_type\", \"Stop\")\nsession_id = payload.get(\"session_id\", \"unknown\")\nsummary    = payload.get(\"summary\", \"\")\ncost_usd   = payload.get(\"cost_usd\", 0)\n\n# Write session report\nreports = Path.home() / \".claude\" / \"sessions\"\nreports.mkdir(parents=True, exist_ok=True)\nwith open(reports / f\"{session_id}.json\", \"w\") as f:\n    json.dump({\n        \"session_id\": session_id,\n        \"event\":      event_type,\n        \"ended_at\":   datetime.utcnow().isoformat(),\n        \"cost_usd\":   cost_usd,\n        \"summary\":    summary,\n    }, f, indent=2)\n\n# Chain to a review agent when output signals readiness\nif event_type == \"SubagentStop\" and \"READY_FOR_REVIEW\" in summary:\n    os.system(\n        f'claude --system \"You are a code reviewer.\" '\n        f'\"Review the changes from session {session_id}.\"'\n    )\n\nprint(f\"Session {session_id} logged. Cost: ${cost_usd:.4f}\")\nsys.exit(0)",
+      "plain": "Session lifecycle hooks fire when a Claude Code session finishes. The Stop hook gives you a summary of everything that happened — tools used, output produced, cost — so you can log it, archive files, send a completion notification, or hand off the result to the next agent in a pipeline."
+    },
+    {
+      "id": "agent_callbacks",
+      "title": "Agent Callbacks",
+      "tags": [
+        "hooks",
+        "callbacks",
+        "langchain",
+        "agent-frameworks"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "hooks_overview",
+        "agentic_loop"
+      ],
+      "related": [
+        "streaming_events",
+        "observability_via_hooks",
+        "orchestration"
+      ],
+      "short": "The framework-level hook pattern used in LangChain and similar libraries — callback handler classes whose methods fire at every step of the agent loop.",
+      "body": "Agent frameworks like LangChain implement hooks as callback handler classes. You subclass BaseCallbackHandler, override the methods you care about (on_llm_start, on_llm_end, on_tool_start, on_tool_end, on_chain_start, on_agent_action, on_agent_finish), and pass your handler when creating a chain or agent. The framework calls the right method at the right moment — no polling, no manual instrumentation needed, no changes to the agent code itself.\n\nEach callback method receives rich context: on_tool_start gets the tool name and input; on_tool_end gets the output; on_llm_end gets the full generation including token counts. Multiple handlers can be registered simultaneously — one for logging, one for streaming to a UI, one for cost tracking — and all fire for every event. This composable design keeps different concerns in separate classes.\n\nThe callback approach scales naturally to complex multi-agent systems. A single top-level handler registered on the orchestrator receives events from every sub-chain and sub-agent it invokes, giving a unified view of the entire execution graph. Libraries like LangSmith and Langfuse are built on top of this interface — they provide a hosted callback handler that captures every event and displays it as an interactive execution trace.",
+      "code_example": "from langchain.callbacks.base import BaseCallbackHandler\nfrom langchain.schema import LLMResult\nfrom datetime import datetime\n\nclass AuditCallbackHandler(BaseCallbackHandler):\n    def __init__(self):\n        self.events: list[dict] = []\n        self._t0: float | None  = None\n\n    def on_llm_start(self, serialized, prompts, **kwargs):\n        self._t0 = datetime.utcnow().timestamp()\n        self.events.append({\"type\": \"llm_start\", \"prompts\": prompts})\n\n    def on_llm_end(self, response: LLMResult, **kwargs):\n        dur    = datetime.utcnow().timestamp() - (self._t0 or 0)\n        tokens = (response.llm_output or {}).get(\"token_usage\", {}).get(\"total_tokens\", 0)\n        self.events.append({\"type\": \"llm_end\", \"duration_s\": round(dur, 3), \"tokens\": tokens})\n\n    def on_tool_start(self, serialized, input_str, **kwargs):\n        self.events.append({\"type\": \"tool_start\", \"tool\": serialized[\"name\"], \"input\": input_str})\n\n    def on_tool_end(self, output, **kwargs):\n        self.events.append({\"type\": \"tool_end\", \"output\": str(output)[:200]})\n\n    def summary(self) -> str:\n        tokens = sum(e.get(\"tokens\", 0) for e in self.events)\n        tools  = sum(1 for e in self.events if e[\"type\"] == \"tool_start\")\n        return f\"{len(self.events)} events | {tokens} tokens | {tools} tool calls\"",
+      "plain": "Agent callbacks are the framework-level version of hooks. In LangChain and similar libraries, you register a callback handler object, and its methods are called automatically at each step: when the LLM is called, when a tool runs, when the chain starts and ends. One class instruments the entire agent without changing any of the agent's own code."
+    },
+    {
+      "id": "streaming_events",
+      "title": "Streaming Events",
+      "tags": [
+        "hooks",
+        "streaming",
+        "sse",
+        "real-time",
+        "agents"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "agent_callbacks"
+      ],
+      "related": [
+        "observability_via_hooks",
+        "agentic_loop",
+        "context_window"
+      ],
+      "short": "Agents emit events token-by-token and step-by-step via streaming APIs, letting UIs show progress in real time instead of waiting for the full response.",
+      "body": "Streaming flips the user experience from 'wait for everything' to 'see it happen'. Instead of the agent running for 30 seconds and returning a result, each token the LLM generates arrives immediately, each tool call fires an event the moment it starts, and each tool result streams back as it completes. The agent's internal loop becomes visible. Users can interrupt a bad plan before it runs to completion, and developers can see exactly where an agent spends its time.\n\nModern LLM APIs (Anthropic, OpenAI) support server-sent events (SSE) for streaming. At the agent framework level, streaming surfaces through the callback system: on_llm_new_token fires for each generated token, letting your application update the UI incrementally. Streaming tool calls are more complex — the tool name and arguments arrive as partial JSON that must be accumulated and parsed as it arrives. The Anthropic SDK streams input_json_delta events for tool argument chunks.\n\nStreaming changes the architecture of agent UIs. A non-streaming UI makes one request and renders one response. A streaming UI opens a persistent connection, reads events, and updates the DOM continuously. Server-Sent Events (SSE) is simpler than WebSockets — one-directional, automatic reconnect, plain HTTP — and sufficient for most agent UIs where the client only needs to receive events.",
+      "code_example": "import anthropic\n\nclient = anthropic.Anthropic()\n\ndef stream_agent_response(user_message: str, tools: list[dict]):\n    with client.messages.stream(\n        model=\"claude-opus-4-7\",\n        max_tokens=1024,\n        tools=tools,\n        messages=[{\"role\": \"user\", \"content\": user_message}],\n    ) as stream:\n        current_tool = None\n        tool_args    = \"\"\n\n        for event in stream:\n            if event.type == \"content_block_delta\":\n                if event.delta.type == \"text_delta\":\n                    print(event.delta.text, end=\"\", flush=True)\n                elif event.delta.type == \"input_json_delta\":\n                    tool_args += event.delta.partial_json\n\n            elif event.type == \"content_block_start\":\n                if hasattr(event.content_block, \"name\"):\n                    current_tool = event.content_block.name\n                    print(f\"\\n[Tool: {current_tool}] \", end=\"\", flush=True)\n\n            elif event.type == \"content_block_stop\" and current_tool:\n                print(f\"args={tool_args[:80]}\")\n                current_tool = None\n                tool_args    = \"\"\n\n    return stream.get_final_message()",
+      "plain": "Streaming lets you see what an agent is doing as it happens, rather than waiting for it to finish. Each token arrives immediately. Each tool call fires an event the moment it starts. This is what makes agent interfaces feel responsive — instead of a spinner for 30 seconds, you watch the thinking and actions unfold in real time."
+    },
+    {
+      "id": "observability_via_hooks",
+      "title": "Observability via Hooks",
+      "tags": [
+        "hooks",
+        "observability",
+        "tracing",
+        "monitoring",
+        "agents"
+      ],
+      "path": "Agent Hooks & Callbacks",
+      "prerequisites": [
+        "agent_callbacks",
+        "monitoring"
+      ],
+      "related": [
+        "agent_evaluation",
+        "streaming_events",
+        "claude_code_hooks"
+      ],
+      "short": "Using hooks and callbacks as the collection layer for tracing, cost tracking, and alerting on agentic systems.",
+      "body": "Observability for agents answers: what exactly did the agent do, how long did each step take, how much did it cost, and where did it go wrong? Hooks are the collection point — every LLM call, tool invocation, and decision fires a callback. Without hooks the agent is a black box; with them you have a structured record of every decision and action.\n\nTracing captures the full execution graph of an agent run as a tree of spans: the top-level task, each sub-chain, each LLM call, each tool use. Span start and end times give latency at every level. Token counts give cost per LLM call. Tool inputs and outputs let you replay or debug any step. LangSmith, Langfuse, and Weights & Biases Weave are built on the callback interface — they provide hosted trace storage and visualisation with no custom infrastructure required.\n\nAlerts close the loop from observation to action. Once you collect metrics via hooks — p95 latency per tool, token cost per task, error rate per agent — you can define thresholds and trigger alerts when they are breached. An agent that suddenly takes three times as many steps to complete a task is worth investigating even if it still completes it. Anomaly detection over hook-collected metrics is the production-grade version of the manual evaluation loop you run during development.",
+      "code_example": "import time\nfrom collections import defaultdict\nfrom dataclasses import dataclass, field\n\n@dataclass\nclass Span:\n    name:     str\n    start_ms: float\n    end_ms:   float = 0.0\n    meta:     dict  = field(default_factory=dict)\n\n    @property\n    def duration_ms(self): return self.end_ms - self.start_ms\n\n\nclass TracingCallbackHandler:\n    def __init__(self):\n        self.spans:   list[Span]           = []\n        self.tokens:  defaultdict[str,int] = defaultdict(int)\n        self._active: dict[str,float]      = {}\n\n    def on_llm_start(self, serialized, prompts, run_id=None, **kw):\n        self._active[str(run_id)] = time.time() * 1000\n\n    def on_llm_end(self, response, run_id=None, **kw):\n        start  = self._active.pop(str(run_id), time.time()*1000)\n        t      = (response.llm_output or {}).get(\"token_usage\",{}).get(\"total_tokens\",0)\n        self.tokens[\"llm\"] += t\n        self.spans.append(Span(\"llm\", start, time.time()*1000, {\"tokens\": t}))\n\n    def on_tool_start(self, serialized, tool_input, run_id=None, **kw):\n        self._active[f\"t_{run_id}\"] = time.time() * 1000\n\n    def on_tool_end(self, output, run_id=None, **kw):\n        start = self._active.pop(f\"t_{run_id}\", time.time()*1000)\n        self.spans.append(Span(\"tool\", start, time.time()*1000))\n\n    def report(self) -> dict:\n        llm_spans = [s for s in self.spans if s.name == \"llm\"]\n        return {\n            \"total_spans\":  len(self.spans),\n            \"total_tokens\": self.tokens[\"llm\"],\n            \"avg_llm_ms\":   sum(s.duration_ms for s in llm_spans) / max(1, len(llm_spans)),\n        }",
+      "plain": "Observability means being able to answer: what exactly did the agent do, how long did each step take, and where did it go wrong? Hooks are the collection point for all of this data. Every LLM call, tool invocation, and decision gets logged via callbacks, feeding traces, cost metrics, and anomaly alerts."
     },
     {
       "id": "agentic_loop",
@@ -2477,7 +2436,7 @@
       "related": [
         "orchestration",
         "planning_and_reasoning",
-        "useEffect"
+        "streaming_events"
       ],
       "short": "The core perceive-reason-act cycle that every AI agent runs repeatedly to accomplish goals.",
       "body": "Think of an agent like a person at a desk: they read what's in front of them, decide what to do, take an action, then check what happened — and repeat. The agentic loop is exactly that cycle: the agent receives an observation (text, tool output, user message), passes it to an LLM to reason about, gets back an action (a tool call or a reply), executes that action, and feeds the result back as the next observation. This repeats until the task is complete or the agent decides to stop.\n\nEach iteration of the loop adds new information to the context window: the original goal, every observation so far, and every action taken. This means context grows with each step, which is one of the main constraints on how many loop iterations are practical. The LLM at the center is stateless — it only knows what's in the current context. Everything the agent 'remembers' is explicitly written into that context or retrieved from external memory.\n\nThe loop is deceptively simple to implement (a while loop calling an LLM) but hard to make reliable. Common failure modes: the agent loops forever (no clear stopping condition), it hallucinates tool results (treats a wrong assumption as real), or it gets stuck in a pattern it can't reason its way out of. Robust agents need explicit loop limits, progress checks, and fallback paths when the LLM is uncertain.",
@@ -2502,8 +2461,7 @@
       "related": [
         "rag",
         "agentic_loop",
-        "useState",
-        "useReducer"
+        "agent_callbacks"
       ],
       "short": "The different ways agents store and retrieve information — from the current conversation to a lifetime of past interactions.",
       "body": "An agent's memory isn't one thing — it's four distinct layers. Working memory is the active context window: everything the agent can see right now. Episodic memory is a log of past interactions stored in a vector database, retrieved by semantic similarity when they become relevant. Semantic memory is factual knowledge the agent can look up (a RAG knowledge base). Procedural memory is encoded in the model weights themselves — the skills and patterns the LLM learned during training.\n\nThe context window is the bottleneck. Every past message, tool result, and reasoning trace consumes tokens. Agents that run for many steps will hit the context limit. Strategies to manage this: sliding window (drop oldest messages), summarisation (compress earlier turns into a short paragraph), retrieval (store all history externally and only pull in what's relevant to the current step). The right strategy depends on what information the agent actually needs to remember.\n\nExternal memory (a vector database) is the key to agents that remember across sessions. After each conversation, embed the key facts and store them. At the start of the next session, retrieve the most relevant memories based on the current query and inject them into the system prompt. This gives the impression of long-term memory without the context window cost. The hard problem is deciding what's worth remembering — storing everything leads to noise; storing too little loses continuity.",
@@ -2528,7 +2486,7 @@
       "related": [
         "orchestration",
         "multi_agent_systems",
-        "useReducer"
+        "agent_callbacks"
       ],
       "short": "How agents break down complex goals into steps and reason through uncertainty before acting.",
       "body": "A language model asked to answer a hard question directly will often give a plausible-sounding but wrong answer. The same model asked to 'think step by step' before answering will dramatically improve accuracy. This is Chain-of-Thought (CoT) prompting: encouraging the model to write out its reasoning before committing to an answer. The reasoning trace is part of the output, not a hidden computation — the model generates tokens representing its thinking, and those tokens influence what comes next.\n\nReAct (Reason + Act) extends CoT to agentic settings. The model alternates between 'Thought:' traces (what it's thinking) and 'Action:' calls (what tool to invoke). After each tool result arrives, it reasons again before the next action. This interleaving of reasoning and action lets the model adjust its plan based on what it learns from tools, rather than planning everything upfront and executing blindly. Tree of Thoughts takes it further — the model generates multiple reasoning branches simultaneously and picks the most promising path, like beam search for reasoning.\n\nTask decomposition is the practical core of planning. Given a complex goal, the planner LLM breaks it into a sequence of concrete subtasks with clear inputs and outputs. Each subtask can then be handed to a specialist agent or executed directly. Good decomposition makes tasks testable (each subtask has a clear success condition), parallelisable (independent subtasks can run concurrently), and recoverable (a failed subtask can be retried without restarting from scratch). Bad decomposition produces subtasks so vague or interdependent that they're harder than the original problem.",
@@ -2576,8 +2534,7 @@
       ],
       "related": [
         "agent_evaluation",
-        "planning_and_reasoning",
-        "useContext"
+        "planning_and_reasoning"
       ],
       "short": "Networks of specialized agents that collaborate, delegate, and check each other's work to handle complex tasks.",
       "body": "A single LLM agent has real limits: its context window fills up, its generalist knowledge is outperformed by specialists, and it can't run two things at once. Multi-agent systems solve these limits by splitting work across agents — each with its own context, tools, and role. A research agent searches the web. A coding agent writes and runs code. A review agent checks outputs for errors. An orchestrator agent coordinates them all. Together they handle tasks that would break any individual agent.\n\nThree structural patterns cover most multi-agent designs. Supervisor-worker: one orchestrator agent routes tasks to specialist workers, collects results, and synthesises a final answer. Peer-to-peer: agents communicate directly with each other, passing messages and delegating sub-tasks in a mesh. Hierarchical: nested supervisors, where a top-level planner delegates to mid-level coordinators who delegate to leaf-level executors. The right pattern depends on task complexity and how tightly the outputs need to be integrated.\n\nThe hard problems in multi-agent systems are communication and consistency. Agents need a shared message format, a way to pass large artifacts (a file path, not the file contents), and a mechanism for detecting when a subtask failed so the supervisor can retry or reroute. Shared state (a scratchpad all agents can read and write) is convenient but creates race conditions. Message passing is safer but requires careful schema design. Debugging is harder than single-agent: a wrong final answer might originate from any agent in the pipeline, so each step needs logging and tracing.",
@@ -2649,7 +2606,7 @@
       "related": [
         "orchestration",
         "agent_evaluation",
-        "useState"
+        "pre_tool_use_hook"
       ],
       "short": "Designing agents that pause, ask for approval, and defer to humans at the right moments — not just at the end.",
       "body": "Full automation is rarely the right goal, and often not the right starting point. Human-in-the-loop (HITL) means building deliberate checkpoints into an agent's workflow where a human can review, correct, approve, or redirect. This isn't a limitation — it's the right engineering choice whenever the cost of a wrong autonomous action (an email sent to 10,000 customers, a file deleted, a payment processed) exceeds the cost of a brief human delay.\n\nThree HITL patterns cover most use cases. Interrupt-and-wait: the agent pauses before a high-stakes action, presents what it's about to do, and requires explicit approval before continuing. Async review: the agent queues actions for background human review while continuing with safe, non-blocking work — useful when latency matters but some actions need oversight. Plan-first: the agent presents its full plan before executing any of it, letting the human catch mistakes when they're cheap to fix (before execution) rather than expensive (after irreversible actions have run). Plan-first is underused — most agentic demos skip straight to execution and fail visibly.\n\nThe design question isn't whether to include humans, but where to insert them based on risk and reversibility. A good heuristic: any action that can't be undone with a single API call requires a human checkpoint. Any action that touches external systems (email, calendar, payments, deployments) requires one too. As the agent builds a trust record, checkpoints for proven-safe action types can be removed incrementally — starting restrictive and relaxing over time is much safer than starting permissive and trying to add guardrails after a failure.",
