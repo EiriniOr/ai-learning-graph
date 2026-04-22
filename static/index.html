@@ -81,7 +81,7 @@ let conceptMap = {};
 let currentId  = null;
 
 async function boot() {
-  const res = await fetch("/api/concepts");
+  const res = await fetch("/concepts.json");
   data = await res.json();
   conceptMap = Object.fromEntries(data.concepts.map(c => [c.id, c]));
   window._pathsData = data.paths;

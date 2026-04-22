@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/concepts.json", "destination": "/static/concepts.json" },
+    { "source": "/(.*)", "destination": "/static/index.html" }
+  ]
+}
