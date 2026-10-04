@@ -1,5 +1,7 @@
 # AI Learning Graph
 
+> 📁 Part of my portfolio: [see this project and more →](https://eirini-portfolio-aer3.vercel.app/?utm_source=github&utm_medium=readme&utm_campaign=ai-learning-graph#story/mrgraph-the-graph-based-tutor)
+
 Interactive knowledge graph for navigating AI/ML engineering concepts.
 
 ## Setup
